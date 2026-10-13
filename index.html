@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d2a4a">
+<title>Gia sư Tiếng Anh AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1d2a4a;--sun:#ffc83d;--mint:#2fbf8f;--coral:#ff6b57;--sky:#eaf4ff;--card:#fff;--mut:#5d6b8a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:inherit}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--sky);color:var(--ink);font:500 17px/1.45 "Baloo 2",system-ui,sans-serif}
+#app{max-width:480px;margin:0 auto;padding:16px 16px 40px;min-height:100vh}
+h1{font-size:28px;margin:8px 0 4px}h2{font-size:21px;margin:4px 0 10px}p{margin:6px 0}
+.card{background:var(--card);border-radius:22px;padding:16px;margin:12px 0;box-shadow:0 2px 0 #cfe0f5}
+label{display:block;font-size:14px;color:var(--mut);margin:10px 0 3px}
+input,select,textarea{width:100%;font:inherit;padding:11px 13px;border:2px solid #cfe0f5;border-radius:14px;background:#fff;color:var(--ink)}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid var(--sun);outline-offset:1px}
+button{font:700 18px "Baloo 2",system-ui,sans-serif;border:0;border-radius:16px;padding:13px 18px;background:var(--ink);color:#fff;width:100%;margin-top:10px}
+button.sun{background:var(--sun);color:var(--ink)}button.ghost{background:#e3ecf9;color:var(--ink)}
+button:disabled{opacity:.5}
+.row{display:flex;gap:10px}.row>*{flex:1}.row .mic{flex:0 0 64px}
+.play{width:150px;height:150px;border-radius:50%;background:var(--sun);color:var(--ink);font-size:54px;display:block;margin:14px auto;padding:0}
+.mic{background:var(--coral);font-size:26px;padding:0}.mic.on{animation:pulse 1s infinite}
+@keyframes pulse{50%{transform:scale(1.08)}}
+@media(prefers-reduced-motion:reduce){.mic.on{animation:none;outline:4px solid var(--sun)}}
+.bar{height:12px;background:#e3ecf9;border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;background:var(--mint)}
+.prog{height:8px;background:#d5e4f7;border-radius:8px;overflow:hidden;margin:4px 0 8px}.prog i{display:block;height:100%;background:var(--coral)}
+.mut{color:var(--mut);font-size:14px}.err{background:#ffe5e0;color:#8a1f10;border-radius:14px;padding:10px 13px;margin-top:10px}
+.big{font-size:23px}.ok{color:var(--mint)}.bad{color:var(--coral)}
+ul{padding-left:20px;margin:4px 0}
+.orb{width:170px;height:170px;border-radius:50%;margin:18px auto;display:grid;place-items:center;font-size:60px;background:var(--sun)}
+.orb.listen{background:var(--coral)}.orb.think{background:#cdd9ee}
+</style></head><body><div id="app"></div>
+<script>
+const SK={L:'Nghe hiểu',V:'Từ vựng',G:'Ngữ pháp',S:'Nói',W:'Viết'};
+const SKE={L:'listening comprehension',V:'vocabulary',G:'grammar',S:'speaking',W:'short writing'};
+const app=document.getElementById('app');
+const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+let S={};try{S=JSON.parse(localStorage.getItem('tutor1')||'{}')}catch(e){}
+const save=()=>{try{localStorage.setItem('tutor1',JSON.stringify(S))}catch(e){}};
+const MODELS={openai:'gpt-4o-mini',gemini:'gemini-2.0-flash',claude:'claude-haiku-5-5'};
+
+function age(){const p=S.profile;if(p.birth){const d=new Date(p.birth),n=new Date();let a=n.getFullYear()-d.getFullYear();if(n<new Date(n.getFullYear(),d.getMonth(),d.getDate()))a--;return Math.max(3,a)}return +p.age||6}
+function baseLevel(){const a=age();return a<=5?1:a<=7?1.5:a<=9?2.3:a<=11?3:3.5}
+
+/* ---------- AI connection ---------- */
+async function ai(sys,msgs){
+  const {prov,key,model}=S.ai;let r,j;
+  if(prov==='openai'){
+    r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify({model,messages:[{role:'system',content:sys},...msgs]})});
+    j=await r.json();if(!r.ok)throw new Error(j.error?.message||r.status);return j.choices[0].message.content}
+  if(prov==='gemini'){
+    r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:msgs.map(m=>({role:m.role==='user'?'user':'model',parts:[{text:m.content}]}))})});
+    j=await r.json();if(!r.ok)throw new Error(j.error?.message||r.status);return j.candidates[0].content.parts.map(p=>p.text||'').join('')}
+  r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model,max_tokens:1200,system:sys,messages:msgs})});
+  j=await r.json();if(!r.ok)throw new Error(j.error?.message||r.status);return j.content.map(c=>c.text||'').join('')}
+const J=async(sys,u)=>{const t=await ai(sys+' Reply with ONLY valid minified JSON, no markdown fences.',[{role:'user',content:u}]);return JSON.parse(t.slice(t.indexOf('{'),t.lastIndexOf('}')+1))};
+const sysT=()=>`You are a warm, patient English tutor for ${S.profile.name}, age ${age()}, who speaks ${S.profile.lang} at home. Use very simple English suited to that age. Feedback for the parent/child must be written in ${S.profile.lang}: short and encouraging.`;
+
+/* ---------- speech ---------- */
+let REC=null;
+function say(text,cb){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=.85;u.onend=()=>cb&&cb();u.onerror=()=>cb&&cb();speechSynthesis.speak(u)}
+function listen(onText,onEnd){
+  const R=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!R){alert('Trình duyệt chưa hỗ trợ micro. Hãy mở bằng Chrome trên Android (địa chỉ https).');onEnd&&onEnd();return}
+  try{REC&&REC.abort()}catch(e){}
+  const r=new R();REC=r;r.lang='en-US';r.interimResults=false;let got=false;
+  r.onresult=e=>{got=true;onText(e.results[0][0].transcript)};
+  r.onend=()=>onEnd&&onEnd(got);r.onerror=()=>{};
+  try{r.start()}catch(e){onEnd&&onEnd(false)}}
+function loading(msg){app.innerHTML=`<div class="card" style="text-align:center"><div class="orb think">⏳</div><p>${esc(msg)}</p></div>`}
+function fail(e,retry){app.insertAdjacentHTML('beforeend',`<div class="err">Không kết nối được AI: ${esc(e.message||e)}<br><span class="mut">Kiểm tra mạng, khóa API và tên mô hình.</span></div><button id="rt">Thử lại</button><button class="ghost" id="st">Sửa kết nối AI</button>`);
+  document.getElementById('rt').onclick=retry;document.getElementById('st').onclick=()=>setup(true)}
+
+/* ---------- Step 1: profile ---------- */
+function setup(edit){
+  const p=S.profile||{},a=S.ai||{prov:'openai'};
+  app.innerHTML=`<h1>Xin chào! 👋</h1><p class="mut">${edit?'Chỉnh sửa hồ sơ và kết nối AI.':'Bước 1 · Đăng ký hồ sơ cho bé'}</p>
+  <div class="card"><h2>Thông tin của bé</h2>
+  <label>Tên bé</label><input id="n" value="${esc(p.name)}" autocomplete="off">
+  <label>Ngày sinh (hoặc để trống và nhập tuổi bên dưới)</label><input id="b" type="date" value="${esc(p.birth)}">
+  <label>Tuổi</label><input id="a" type="number" min="3" max="15" value="${esc(p.age)}">
+  <label>Ngôn ngữ dùng ở nhà</label><input id="l" value="${esc(p.lang||'Tiếng Việt')}">
+  <label>Thời lượng học mỗi ngày</label><select id="m">${[10,15,20,30].map(x=>`<option value="${x}" ${(p.min||20)==x?'selected':''}>${x} phút</option>`).join('')}</select></div>
+  <div class="card"><h2>Kết nối AI</h2><p class="mut">Khóa chỉ lưu trên điện thoại này và chỉ gửi tới nhà cung cấp AI bạn chọn.</p>
+  <label>Nhà cung cấp</label><select id="v"><option value="openai">ChatGPT (OpenAI)</option><option value="gemini">Gemini (Google)</option><option value="claude">Claude (Anthropic)</option></select>
+  <label>Khóa API</label><input id="k" type="password" value="${esc(a.key)}" autocomplete="off">
+  <label>Mô hình</label><input id="o" value="${esc(a.model||MODELS[a.prov])}">
+  <div id="msg"></div><button class="sun" id="go">Kết nối và lưu</button></div>`;
+  const v=document.getElementById('v');v.value=a.prov;
+  v.onchange=()=>document.getElementById('o').value=MODELS[v.value];
+  document.getElementById('go').onclick=async()=>{
+    const g=id=>document.getElementById(id).value.trim(),msg=document.getElementById('msg');
+    if(!g('n')||(!g('b')&&!g('a'))||!g('k')){msg.innerHTML='<div class="err">Hãy nhập tên bé, ngày sinh hoặc tuổi, và khóa API.</div>';return}
+    const btn=document.getElementById('go');btn.disabled=true;btn.textContent='Đang kiểm tra...';
+    const old=[S.profile,S.ai];
+    S.profile={name:g('n'),birth:g('b'),age:g('a'),lang:g('l')||'Tiếng Việt',min:+g('m')};
+    S.ai={prov:g('v'),key:g('k'),model:g('o')||MODELS[g('v')]};
+    try{await ai('Reply with one word.',[{role:'user',content:'Say OK'}])}
+    catch(e){[S.profile,S.ai]=old;btn.disabled=false;btn.textContent='Kết nối và lưu';msg.innerHTML=`<div class="err">Kết nối thất bại: ${esc(e.message)}</div>`;return}
+    if(!S.levels){const b=baseLevel()-.3;S.levels={L:b,V:b,G:b,S:b,W:b};S.weak=[];S.seen=[];S.day=0}
+    save();S.tested?home():intro()}}
+
+/* ---------- Step 2: placement test ---------- */
+let Q;
+function intro(){
+  app.innerHTML=`<h1>Kiểm tra đầu vào</h1><div class="card"><p>10 câu ngắn gồm nghe, từ vựng, ngữ pháp, nói và viết. Câu đầu dễ; nếu bé làm tốt, câu sau sẽ khó dần.</p><p class="mut">Hãy ngồi cạnh và để bé tự trả lời nhé. Bé có thể gõ hoặc bấm micro để nói.</p><button class="sun" id="go">Bắt đầu kiểm tra</button></div>`;
+  document.getElementById('go').onclick=()=>{Q={mode:'test',items:'LVGSWLGSVW'.split('').map(s=>({skill:s})),i:0,res:[]};nextQ()}}
+async function nextQ(){
+  if(Q.i>=Q.items.length)return Q.mode==='test'?makePlan():startChat();
+  const it=Q.items[Q.i];loading('Đang chuẩn bị câu hỏi...');
+  try{
+    const q=await J(sysT(),`Create ONE ${SKE[it.skill]} question. Difficulty ${S.levels[it.skill].toFixed(1)} on a 1-5 scale (1 = a 4-year-old beginner). Topic hint: ${it.topic||'pick a fresh everyday topic'}. Avoid these topics: ${(S.seen||[]).slice(-15).join(', ')||'none'}. Return {"topic":"short english tag","prompt":"instruction shown to the child, simple English, max 20 words","speak":"exact English text read aloud","expect":"model answer"}. Rules: listening = speak is a 2-3 sentence mini story or dialogue followed by one question, prompt is "Listen and answer."; vocabulary = a word meaning or usage question; grammar = fill in or fix a short sentence; speaking = ask the child to say something aloud; writing = ask for one short sentence.`);
+    showQ(q,it)}catch(e){app.innerHTML='';fail(e,nextQ)}}
+function showQ(q,it){
+  const L=it.skill==='L',tot=Q.items.length;
+  app.innerHTML=`<div class="mut">${SK[it.skill]} · câu ${Q.i+1}/${tot}</div><div class="prog"><i style="width:${(Q.i/tot)*100}%"></i></div>
+  <div class="card">${L?`<button class="play" id="pl" aria-label="Phát âm thanh">▶</button>`:`<p class="big">${esc(q.prompt)}</p><button class="ghost" id="pl">🔊 Nghe đọc</button>`}
+  <label>Câu trả lời</label><div class="row"><textarea id="t" rows="2" placeholder="Gõ hoặc bấm micro"></textarea><button class="mic" id="mc" aria-label="Nói">🎤</button></div>
+  <button class="sun" id="sb">Gửi</button><div id="fb"></div></div>`;
+  const t=document.getElementById('t'),mc=document.getElementById('mc');
+  document.getElementById('pl').onclick=()=>say(q.speak||q.prompt);
+  if(L)say(q.speak);
+  mc.onclick=()=>{speechSynthesis.cancel();mc.classList.add('on');listen(x=>t.value=x,()=>mc.classList.remove('on'))};
+  document.getElementById('sb').onclick=async()=>{
+    const ans=t.value.trim();if(!ans)return;const sb=document.getElementById('sb');sb.disabled=true;sb.textContent='Đang chấm...';
+    try{
+      const g=await J(sysT(),`Question: ${q.speak||q.prompt}\nModel answer: ${q.expect}\nChild's answer${it.skill==='S'?' (speech-to-text: judge content, expression and approximate pronunciation, be lenient for the age)':''}: ${ans}\nReturn {"score":0 to 1,"feedback":"1-2 sentences in ${S.profile.lang}, praise first then gently correct","correct":"corrected english answer","error":"short error type or empty"}`);
+      grade(q,it,ans,g)}catch(e){sb.disabled=false;sb.textContent='Gửi';fail(e,()=>document.getElementById('sb').click())}}}
+function grade(q,it,ans,g){
+  const sc=clamp(+g.score||0,0,1),k=it.skill;
+  S.levels[k]=clamp(S.levels[k]+(sc-.55)*.8,1,5);
+  (S.seen=S.seen||[]).push(q.topic);
+  S.weak=(S.weak||[]).filter(w=>w.topic!==q.topic);
+  if(sc<.5)S.weak.push({skill:k,topic:q.topic});S.weak=S.weak.slice(-12);
+  Q.res.push({skill:k,topic:q.topic,score:sc,error:g.error||'',answer:ans});save();
+  const fb=document.getElementById('fb'),face=sc>=.8?'🌟':sc>=.5?'👍':'💪';
+  fb.innerHTML=`<div class="card" style="background:#f3faf7"><p class="big">${face} ${sc>=.8?'Giỏi lắm!':sc>=.5?'Khá tốt!':'Cố lên nhé!'}</p><p>${esc(g.feedback)}</p>${sc<.8&&g.correct?`<p class="mut">Đáp án gợi ý: <b>${esc(g.correct)}</b> <button class="ghost" id="hr" style="width:auto;padding:4px 12px;font-size:15px">🔊</button></p>`:''}<button class="sun" id="nx">Tiếp tục</button></div>`;
+  document.getElementById('sb').style.display='none';
+  const hr=document.getElementById('hr');if(hr)hr.onclick=()=>say(g.correct);
+  document.getElementById('nx').onclick=()=>{Q.i++;nextQ()}}
+
+/* ---------- Step 3: report + curriculum ---------- */
+async function makePlan(){
+  loading('Đang tổng hợp kết quả và xây giáo trình...');
+  try{
+    const p=await J(sysT(),`Placement test results: ${JSON.stringify(Q.res)}. Skill levels (1-5): ${JSON.stringify(S.levels)}. Write for the parent in ${S.profile.lang}. Return {"summary":"2 sentences","strengths":["..."],"errors":["common mistakes"],"gaps":["missing knowledge"],"plan":[{"week":"Tuần 1","focus":"..."},{"week":"Tuần 2","focus":"..."},{"week":"Tuần 3-4","focus":"..."}]}`);
+    S.plan=p;save();report(true)}catch(e){app.innerHTML='';fail(e,makePlan)}}
+function report(first){
+  const p=S.plan||{},li=a=>`<ul>${(a||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;
+  app.innerHTML=`<h1>Báo cáo của ${esc(S.profile.name)}</h1><div class="card"><p>${esc(p.summary)}</p>
+  ${Object.keys(SK).map(k=>`<p style="margin-bottom:2px">${SK[k]} <span class="mut">${S.levels[k].toFixed(1)}/5</span></p><div class="bar"><i style="width:${S.levels[k]*20}%"></i></div>`).join('')}</div>
+  <div class="card"><h2>Điểm mạnh</h2>${li(p.strengths)}<h2>Lỗi thường gặp</h2>${li(p.errors)}<h2>Kiến thức còn thiếu</h2>${li(p.gaps)}</div>
+  <div class="card"><h2>Giáo trình đề xuất</h2>${(p.plan||[]).map(x=>`<p><b>${esc(x.week)}:</b> ${esc(x.focus)}</p>`).join('')}</div>
+  <button class="sun" id="ok">${first?'Đồng ý, bắt đầu học':'Quay lại'}</button>`;
+  document.getElementById('ok').onclick=()=>{if(first)S.tested=true;save();home()}}
+
+/* ---------- Step 4: daily lesson ---------- */
+function home(){
+  const d=S.day||0;
+  app.innerHTML=`<h1>Chào ${esc(S.profile.name)}! 🌈</h1><p class="mut">Ngày học thứ ${d+1}</p>
+  <div class="card"><h2>Buổi học hôm nay</h2><p class="mut">Ôn nhanh bài trước, học nội dung mới, rồi trò chuyện bằng giọng nói cùng gia sư.</p><button class="sun" id="go">Bắt đầu học</button></div>
+  <div class="card"><h2>Trình độ</h2>${Object.keys(SK).map(k=>`<p style="margin-bottom:2px">${SK[k]}</p><div class="bar"><i style="width:${S.levels[k]*20}%"></i></div>`).join('')}</div>
+  <button class="ghost" id="rp">Xem báo cáo và giáo trình</button><button class="ghost" id="se">Hồ sơ và kết nối AI</button>`;
+  document.getElementById('go').onclick=startDaily;
+  document.getElementById('rp').onclick=()=>report(false);
+  document.getElementById('se').onclick=()=>setup(true)}
+function startDaily(){
+  const n=clamp(Math.round(S.profile.min/4),4,8),rv=[];
+  (S.weak||[]).slice(0,Math.ceil(n/2)).forEach(w=>rv.push({skill:w.skill,topic:w.topic,review:1}));
+  (S.lastTopics||[]).forEach(t=>{if(rv.length<Math.ceil(n/2)&&!rv.some(x=>x.topic===t.topic))rv.push({skill:t.skill,topic:t.topic,review:1})});
+  const order=Object.keys(SK).sort((a,b)=>S.levels[a]-S.levels[b]),nw=[];
+  for(let i=0;rv.length+nw.length<n;i++)nw.push({skill:order[i%5]});
+  Q={mode:'daily',items:[...rv,...nw],i:0,res:[]};S.lastTopics=[];save();nextQ()}
+const _g=grade;grade=function(q,it,ans,g){if(Q.mode==='daily'&&!it.review)(S.lastTopics=S.lastTopics||[]).push({skill:it.skill,topic:q.topic});_g(q,it,ans,g)};
+
+/* ---------- Voice chat (max 15 min) ---------- */
+let C;
+function goodbye(){return `Goodbye, ${S.profile.name}! See you tomorrow!`}
+async function startChat(){
+  const lim=clamp(Math.round(S.profile.min/2),3,15);
+  C={msgs:[{role:'user',content:'(Start: greet me and ask one easy question about my day.)'}],t0:Date.now(),lim,end:false};
+  app.innerHTML=`<h1>Trò chuyện cùng gia sư</h1><p class="mut">Tối đa ${lim} phút · <span id="tm">0:00</span></p>
+  <div class="card" style="text-align:center"><div class="orb think" id="orb">💭</div><p id="st">Đang kết nối...</p><p class="mut" id="ln"></p>
+  <button class="sun" id="tk" style="display:none">🎤 Chạm để nói</button><button class="ghost" id="en">Kết thúc buổi học</button></div>`;
+  document.getElementById('en').onclick=endChat;
+  document.getElementById('tk').onclick=()=>{speechSynthesis.cancel();hear()};
+  C.tm=setInterval(()=>{const s=Math.floor((Date.now()-C.t0)/1000),e=document.getElementById('tm');if(e)e.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');if(s>=C.lim*60)endChat()},1000);
+  turn()}
+const chatSys=()=>sysT()+` You are now in a friendly spoken conversation. Reply in simple English only, at most 2 short sentences, then ask one easy question. If the child makes a clear mistake, gently model the right sentence in your reply. Never use emojis.`;
+function ui(o,txt,btn){const a=document.getElementById('orb');if(!a||C.end)return;a.className='orb '+o;a.textContent={think:'💭',talk:'🗣️',listen:'👂'}[o];document.getElementById('st').textContent=txt;document.getElementById('tk').style.display=btn?'block':'none'}
+async function turn(){
+  if(C.end)return;ui('think','Gia sư đang nghĩ...');
+  try{const r=(await ai(chatSys(),C.msgs)).trim();if(C.end)return;C.msgs.push({role:'assistant',content:r});
+    document.getElementById('ln').textContent=r;ui('talk','Gia sư đang nói...');say(r,hear)}
+  catch(e){ui('think','Mất kết nối AI. Chạm để thử lại.',true);document.getElementById('tk').onclick=()=>{document.getElementById('tk').onclick=()=>{speechSynthesis.cancel();hear()};turn()}}}
+function hear(){
+  if(C.end)return;ui('listen','Bé nói đi nhé...',true);
+  listen(x=>{if(C.end)return;C.msgs.push({role:'user',content:x});document.getElementById('ln').textContent='Bé: '+x;turn()},got=>{if(!got&&!C.end)ui('listen','Chạm nút để nói',true)})}
+function endChat(){
+  if(C.end)return;C.end=true;clearInterval(C.tm);try{REC&&REC.abort()}catch(e){}
+  S.day=(S.day||0)+1;S.lastDate=new Date().toISOString().slice(0,10);save();
+  const g=goodbye();
+  app.innerHTML=`<div class="card" style="text-align:center"><div class="orb">🎉</div><h2>${esc(g)}</h2><p class="mut">Buổi học đã được lưu. Những phần bé còn yếu sẽ quay lại trong các ngày sau.</p><button class="sun" id="hm">Về trang chính</button></div>`;
+  document.getElementById('hm').onclick=home;say(g)}
+
+/* ---------- start ---------- */
+if(!S.profile||!S.ai)setup(false);else S.tested?home():intro();
+</script></body></html>
